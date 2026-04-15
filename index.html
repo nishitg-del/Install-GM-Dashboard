@@ -23,18 +23,27 @@
 
 const SHEET_ID = "1Y6iwc9uI52vs5aTZa4c1c55b93J-h3qh5oQIKPJMkF0";
 
-// FETCH DATA
+// ==========================
+// FETCH DATA (FIXED NAMES)
+// ==========================
 Promise.all([
   fetch(`https://opensheet.elk.sh/${SHEET_ID}/BOM`).then(r => r.json()),
-  fetch(`https://opensheet.elk.sh/${SHEET_ID}/Master Summary1`).then(r => r.json()),
+  fetch(`https://opensheet.elk.sh/${SHEET_ID}/Master%20Summary1`).then(r => r.json()),
   fetch(`https://opensheet.elk.sh/${SHEET_ID}/GRN`).then(r => r.json()),
-  fetch(`https://opensheet.elk.sh/${SHEET_ID}/Booking Data`).then(r => r.json())
+  fetch(`https://opensheet.elk.sh/${SHEET_ID}/Booking%20Data`).then(r => r.json())
 ])
 .then(([bom, master, grn, booking]) => {
 
+  console.log("BOM:", bom);
+  console.log("MASTER:", master);
+  console.log("GRN:", grn);
+  console.log("BOOKING:", booking);
+
   let projects = {};
 
-  // MASTER (Revenue)
+  // ==========================
+  // MASTER → Revenue
+  // ==========================
   master.forEach(r => {
     let id = r["Project ID"];
     if (!id) return;
@@ -42,11 +51,16 @@ Promise.all([
     projects[id] = {
       revenue: parseFloat(r["Booking Value"]) || 0,
       designCost: 0,
-      installCost: 0
+      installCost: 0,
+      region: "",
+      sales: "",
+      status: ""
     };
   });
 
-  // BOM (Design Cost)
+  // ==========================
+  // BOM → Design Cost
+  // ==========================
   bom.forEach(r => {
     let id = r["Project ID"];
     let amt = parseFloat(r["Amount"]) || 0;
@@ -59,7 +73,9 @@ Promise.all([
     projects[id].designCost += amt;
   });
 
-  // GRN (Install Cost)
+  // ==========================
+  // GRN → Install Cost
+  // ==========================
   grn.forEach(r => {
     let id = r["Project ID"];
     let amt = parseFloat(r["Actual Cost"]) || 0;
@@ -72,7 +88,25 @@ Promise.all([
     projects[id].installCost += amt;
   });
 
+  // ==========================
+  // BOOKING → Extra Info
+  // ==========================
+  booking.forEach(r => {
+    let id = r["Project ID"];
+    if (!id) return;
+
+    if (!projects[id]) {
+      projects[id] = { revenue: 0, designCost: 0, installCost: 0 };
+    }
+
+    projects[id].region = r["Region"] || "";
+    projects[id].sales = r["Sales Person"] || "";
+    projects[id].status = r["Status"] || "";
+  });
+
+  // ==========================
   // CALCULATE GM
+  // ==========================
   let labels = [];
   let designGM = [];
   let installGM = [];
@@ -94,16 +128,20 @@ Promise.all([
     totalCost += p.installCost;
   });
 
-  // KPI
-  let gm = ((totalRevenue - totalCost)/totalRevenue)*100;
+  // ==========================
+  // KPI DISPLAY
+  // ==========================
+  let gm = totalRevenue ? ((totalRevenue - totalCost)/totalRevenue)*100 : 0;
 
   document.getElementById("kpi").innerHTML = `
-    Revenue: ${totalRevenue}<br>
-    Cost: ${totalCost}<br>
-    GM%: ${gm.toFixed(2)}
+    <b>Total Revenue:</b> ${totalRevenue}<br>
+    <b>Total Cost:</b> ${totalCost}<br>
+    <b>Blended GM%:</b> ${gm.toFixed(2)}
   `;
 
+  // ==========================
   // CHART
+  // ==========================
   new Chart(document.getElementById("gmChart"), {
     type: "bar",
     data: {
@@ -115,7 +153,9 @@ Promise.all([
     }
   });
 
+  // ==========================
   // DROPDOWN
+  // ==========================
   let select = document.getElementById("projectSelect");
 
   labels.forEach(id => {
@@ -125,16 +165,25 @@ Promise.all([
     select.appendChild(opt);
   });
 
+  // ==========================
+  // DRILL DOWN
+  // ==========================
   select.addEventListener("change", () => {
     let p = projects[select.value];
 
     document.getElementById("details").innerHTML = `
-      Revenue: ${p.revenue}<br>
-      Design Cost: ${p.designCost}<br>
-      Install Cost: ${p.installCost}
+      <b>Revenue:</b> ${p.revenue}<br>
+      <b>Design Cost:</b> ${p.designCost}<br>
+      <b>Install Cost:</b> ${p.installCost}<br>
+      <b>Design GM:</b> ${((p.revenue - p.designCost)/p.revenue*100).toFixed(2)}%<br>
+      <b>Install GM:</b> ${((p.revenue - p.installCost)/p.revenue*100).toFixed(2)}%
     `;
   });
 
+})
+.catch(err => {
+  console.error("ERROR:", err);
+  alert("Data not loading. Check sheet access or names.");
 });
 
 </script>
