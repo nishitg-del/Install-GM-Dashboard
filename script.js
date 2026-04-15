@@ -1,62 +1,157 @@
+// ================================
+// STEP 0: SHEET CONFIG
+// ================================
+
+const SHEET_ID = "1Y6iwc9uI52vs5aTZa4c1c55b93J-h3qh5oQIKPJMkF0";
+
+// ================================
+// STEP 1: FETCH ALL DATA
+// ================================
+
 Promise.all([
-  fetch('https://opensheet.elk.sh/1Y6iwc9uI52vs5aTZa4c1c55b93J-h3qh5oQIKPJMkF0/BOM').then(r => r.json()),
-  fetch('https://opensheet.elk.sh/1Y6iwc9uI52vs5aTZa4c1c55b93J-h3qh5oQIKPJMkF0/Master Summary1').then(r => r.json()),
-  fetch('https://opensheet.elk.sh/YOUR_ID/GRN').then(r => r.json()),
-  fetch('https://opensheet.elk.sh/YOUR_ID/Booking Data').then(r => r.json())
+  fetch(`https://opensheet.elk.sh/${SHEET_ID}/BOM`).then(r => r.json()),
+  fetch(`https://opensheet.elk.sh/${SHEET_ID}/Master Summary1`).then(r => r.json()),
+  fetch(`https://opensheet.elk.sh/${SHEET_ID}/GRN`).then(r => r.json()),
+  fetch(`https://opensheet.elk.sh/${SHEET_ID}/Booking Data`).then(r => r.json())
 ])
 .then(([bom, master, grn, booking]) => {
 
+  console.log("BOM Data:", bom);
+  console.log("Master Data:", master);
+  console.log("GRN Data:", grn);
+  console.log("Booking Data:", booking);
+
+  // ================================
+  // STEP 2: CREATE EMPTY OBJECT
+  // ================================
+
   let projects = {};
 
-  // Revenue
-  master.forEach(r => {
-    projects[r["Project ID"]] = {
-      revenue: parseFloat(r["Booking Value"]) || 0,
+  // ================================
+  // STEP 3: ADD REVENUE (MASTER)
+  // ================================
+
+  master.forEach(row => {
+
+    let projectId = row["Project ID"];
+
+    if (!projectId) return; // skip blank rows
+
+    projects[projectId] = {
+      revenue: parseFloat(row["Booking Value"]) || 0,
       designCost: 0,
-      installCost: 0
+      installCost: 0,
+      region: "",
+      sales: "",
+      status: ""
     };
+
   });
 
-  // Design Cost
-  bom.forEach(r => {
-    let id = r["Project ID"];
-    let amt = parseFloat(r["Amount"]) || 0;
-    if (projects[id]) projects[id].designCost += amt;
+  // ================================
+  // STEP 4: ADD DESIGN COST (BOM)
+  // ================================
+
+  bom.forEach(row => {
+
+    let projectId = row["Project ID"];
+    let amount = parseFloat(row["Amount"]) || 0;
+
+    if (!projectId) return;
+
+    if (!projects[projectId]) {
+      // Handle case where project not in Master
+      projects[projectId] = {
+        revenue: 0,
+        designCost: 0,
+        installCost: 0,
+        region: "",
+        sales: "",
+        status: ""
+      };
+    }
+
+    projects[projectId].designCost += amount;
+
   });
 
-  // Install Cost
-  grn.forEach(r => {
-    let id = r["Project ID"];
-    let amt = parseFloat(r["Actual Cost"]) || 0;
-    if (projects[id]) projects[id].installCost += amt;
+  // ================================
+  // STEP 5: ADD INSTALL COST (GRN)
+  // ================================
+
+  grn.forEach(row => {
+
+    let projectId = row["Project ID"];
+    let amount = parseFloat(row["Actual Cost"]) || 0;
+
+    if (!projectId) return;
+
+    if (!projects[projectId]) {
+      projects[projectId] = {
+        revenue: 0,
+        designCost: 0,
+        installCost: 0,
+        region: "",
+        sales: "",
+        status: ""
+      };
+    }
+
+    projects[projectId].installCost += amount;
+
   });
 
-  // Calculate GM
-  let labels = [];
-  let designGM = [];
-  let installGM = [];
+  // ================================
+  // STEP 6: ADD BOOKING DETAILS
+  // ================================
+
+  booking.forEach(row => {
+
+    let projectId = row["Project ID"];
+
+    if (!projectId) return;
+
+    if (!projects[projectId]) {
+      projects[projectId] = {
+        revenue: 0,
+        designCost: 0,
+        installCost: 0,
+        region: "",
+        sales: "",
+        status: ""
+      };
+    }
+
+    projects[projectId].region = row["Region"] || "";
+    projects[projectId].sales = row["Sales Person"] || "";
+    projects[projectId].status = row["Status"] || "";
+
+  });
+
+  // ================================
+  // STEP 7: CALCULATE GM & METRICS
+  // ================================
 
   Object.keys(projects).forEach(id => {
+
     let p = projects[id];
 
-    let dgm = ((p.revenue - p.designCost) / p.revenue) * 100;
-    let igm = ((p.revenue - p.installCost) / p.revenue) * 100;
-
-    labels.push(id);
-    designGM.push(dgm);
-    installGM.push(igm);
-  });
-
-  // Chart
-  new Chart(document.getElementById('myChart'), {
-    type: 'bar',
-    data: {
-      labels: labels,
-      datasets: [
-        { label: 'Design GM %', data: designGM },
-        { label: 'Install GM %', data: installGM }
-      ]
+    if (p.revenue > 0) {
+      p.designGM = ((p.revenue - p.designCost) / p.revenue) * 100;
+      p.installGM = ((p.revenue - p.installCost) / p.revenue) * 100;
+    } else {
+      p.designGM = 0;
+      p.installGM = 0;
     }
+
+    p.leakage = p.installCost - p.designCost;
+
   });
+
+  // ================================
+  // STEP 8: FINAL OUTPUT
+  // ================================
+
+  console.log("FINAL PROJECT OBJECT:", projects);
 
 });
